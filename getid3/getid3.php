@@ -271,15 +271,8 @@ class getID3
 			$this->info['GETID3_VERSION']   = $this->version();
 			$this->info['php_memory_limit'] = (($this->memory_limit > 0) ? $this->memory_limit : false);
 
-			// remote files not supported
-			if (preg_match('#^(ht|f)tp://#', $filename)) {
-				throw new getid3_exception('Remote files are not supported - please copy the file locally first');
-			}
+			$filename = str_replace('\\', '/', $filename);
 
-			$filename = str_replace('/', DIRECTORY_SEPARATOR, $filename);
-			$filename = preg_replace('#(.+)'.preg_quote(DIRECTORY_SEPARATOR).'{2,}#U', '\1'.DIRECTORY_SEPARATOR, $filename);
-
-			// open local file
 			//if (is_readable($filename) && is_file($filename) && ($this->fp = fopen($filename, 'rb'))) { // see http://www.getid3.org/phpBB3/viewtopic.php?t=1720
 			if ((is_readable($filename) || file_exists($filename)) && is_file($filename) && ($this->fp = fopen($filename, 'rb'))) {
 				// great
@@ -303,8 +296,7 @@ class getID3
 			$this->info['filesize'] = (!is_null($filesize) ? $filesize : filesize($filename));
 			// set redundant parameters - might be needed in some include file
 			// filenames / filepaths in getID3 are always expressed with forward slashes (unix-style) for both Windows and other to try and minimize confusion
-			$filename = str_replace('\\', '/', $filename);
-			$this->info['filepath']     = str_replace('\\', '/', realpath(dirname($filename)));
+			$this->info['filepath']     = dirname($filename);
 			$this->info['filename']     = getid3_lib::mb_basename($filename);
 			$this->info['filenamepath'] = $this->info['filepath'].'/'.$this->info['filename'];
 
@@ -388,7 +380,7 @@ class getID3
 			// ID3v2 detection (NOT parsing), even if ($this->option_tag_id3v2 == false) done to make fileformat easier
 			if (!$this->option_tag_id3v2) {
 				fseek($this->fp, 0);
-				$header = fread($this->fp, 10);
+				$header = stream_get_contents($this->fp, 10);
 				if ((substr($header, 0, 3) == 'ID3') && (strlen($header) == 10)) {
 					$this->info['id3v2']['header']        = true;
 					$this->info['id3v2']['majorversion']  = ord($header{3});
@@ -399,7 +391,7 @@ class getID3
 
 			// read 32 kb file data
 			fseek($this->fp, $this->info['avdataoffset']);
-			$formattest = fread($this->fp, 32774);
+			$formattest = stream_get_contents($this->fp, 32774);
 
 			// determine format
 			$determined_format = $this->GetFileFormat($formattest, ($original_filename ? $original_filename : $filename));
@@ -1690,23 +1682,7 @@ abstract class getid3_handler {
 		if (!getid3_lib::intValueSupported($pos)) {
 			throw new getid3_exception('cannot fread('.$bytes.' from '.$this->ftell().') because beyond PHP filesystem limit', 10);
 		}
-
-		//return fread($this->getid3->fp, $bytes);
-		/*
-		* http://www.getid3.org/phpBB3/viewtopic.php?t=1930
-		* "I found out that the root cause for the problem was how getID3 uses the PHP system function fread().
-		* It seems to assume that fread() would always return as many bytes as were requested.
-		* However, according the PHP manual (http://php.net/manual/en/function.fread.php), this is the case only with regular local files, but not e.g. with Linux pipes.
-		* The call may return only part of the requested data and a new call is needed to get more."
-		*/
-		$contents = '';
-		do {
-			$part = fread($this->getid3->fp, $bytes);
-			$partLength  = strlen($part);
-			$bytes      -= $partLength;
-			$contents   .= $part;
-		} while (($bytes > 0) && ($partLength > 0));
-		return $contents;
+		return stream_get_contents($this->getid3->fp, $bytes);
 	}
 
 	protected function fseek($bytes, $whence=SEEK_SET) {
